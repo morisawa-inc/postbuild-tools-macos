@@ -1,0 +1,141 @@
+#!/bin/bash
+
+#
+# codesign.sh
+# A bash script to perform codesign with limited set of options.
+#
+
+print_help () {
+    echo "usage: $(basename "$0") [--list] [--info] [--help] [--sign <identity>] [--no-deep] [--runtime] [package-path]" >&2
+    echo ""                                                                >&2
+    echo "options:"                                                        >&2
+    echo ""                                                                >&2
+    echo "  --list                 list available identities"              >&2
+    echo "  --info, --info-full    display codesign info for given binary" >&2
+    echo ""                                                                >&2
+    echo "  --sign <identity>      identity for codesigning"               >&2
+    echo "  --no-deep              don't codesign recursively"             >&2
+    echo "  --no-runtime           disable hardened runtime opt-in"        >&2
+    echo ""                                                                >&2
+}
+
+find_child_packages_unsorted () {
+    find "$1" -mindepth 1 -type d | while read FILENAME
+    do
+        if mdls -name kMDItemContentTypeTree "${FILENAME}" | grep -q "com.apple.package"; then
+            echo "${FILENAME}"
+        fi
+    done
+}
+
+find_child_packages () {
+    find_child_packages_unsorted "$1" | sort -r
+}
+
+ARGS=()
+while [[ $# -gt 0 ]]
+do
+KEY="$1"
+
+case $KEY in
+    -s|--sign)
+    SIGNING_IDENTITY="$2"
+    shift
+    shift
+    ;;
+    --no-deep)
+    NO_DEEP=true
+    shift
+    ;;
+    --runtime)
+    NO_HARDENED_RUNTIME=true
+    shift
+    ;;
+    -l|--list)
+    LIST_IDENTITIES=true
+    shift
+    ;;
+    -i|--info)
+    DISPLAY_INFO=true
+    shift
+    ;;
+    --info-full)
+    DISPLAY_INFO=true
+    DISPLAY_INFO_FULL=true
+    shift
+    ;;
+    -h|--help)
+    PRINT_HELP=true
+    shift
+    ;;
+    *)
+    ARGS+=("$1")
+    shift
+    ;;
+esac
+done
+set -- "${ARGS[@]}"
+
+if [ "${PRINT_HELP}" ]; then
+    print_help
+    exit 0
+fi
+
+if [ "${LIST_IDENTITIES}" ]; then
+    security find-identity -v -p codesigning | grep -E '^\s*\d+\)' | perl -pe 's/.*"(.*?)\".*/$1/g'
+    exit $?
+fi
+
+BUNDLE_PATH="$1"
+if [ -z "${BUNDLE_PATH}" ]; then
+    if ! xcodebuild -list >/dev/null 2>&1; then
+        EXIT_CODE=$?
+        echo "error: Failed to run xcodebuild. Make sure that an Xcode project exists in the current directory." >&2
+        exit ${EXIT_CODE}
+    fi
+    BUNDLE_PATH=$((xcodebuild -showBuildSettings 2> /dev/null | grep -e '^\s*CONFIGURATION =' -e '^\s*FULL_PRODUCT_NAME =' | perl -pe 's/^\s*(.*?)\s*=\s*(.*)/$1="$2"/g' && echo 'echo "build/${CONFIGURATION}/${FULL_PRODUCT_NAME}"') | sh)
+fi 
+
+if [ "${DISPLAY_INFO}" ]; then
+    if [ "${DISPLAY_INFO_FULL}" ]; then
+        codesign -dvvv "$1" 2>&1
+    else
+        codesign -dvvv "$1" 2>&1 | grep -e '^Identifier=' -e '^CDHash=' -e '^Authority=' -e '^Timestamp='
+    fi
+    exit $?
+fi
+
+if [ -z "${SIGNING_IDENTITY}" ]; then
+    SIGNING_IDENTITY=$(security find-identity -v -p codesigning | grep -E '^\s*\d+\)' | perl -pe 's/.*"(.*?)\".*/$1/g' | grep -m1 '^Developer ID Application:')
+    if [ -z "${SIGNING_IDENTITY}" ]; then
+        echo "error: Developer ID Application Certificate cannot be found in keychain." >&2
+        exit 1
+    fi
+
+fi
+
+CODESIGN_OPTIONS=()
+CODESIGN_OPTIONS+=('--sign')
+CODESIGN_OPTIONS+=("${SIGNING_IDENTITY}")
+CODESIGN_OPTIONS+=("-vvvv")
+CODESIGN_OPTIONS+=("--force")
+CODESIGN_OPTIONS+=("--strict")
+if [ ! "${NO_DEEP}" ]; then
+    CODESIGN_OPTIONS+=("--deep")
+fi
+if [ ! "${NO_HARDENED_RUNTIME}" ]; then
+    CODESIGN_OPTIONS+=("--option=runtime")
+fi
+
+# '--deep' option doesn't seem to work for app bundles inside 'Resources' folder.
+find_child_packages "${BUNDLE_PATH}" | while read CHILD_PACKAGE_PATH
+do
+    set -x
+    codesign "${CODESIGN_OPTIONS[@]}" "${CHILD_PACKAGE_PATH}"
+    { set +x; } 2>/dev/null
+done
+
+set -x
+codesign "${CODESIGN_OPTIONS[@]}" "${BUNDLE_PATH}"
+{ set +x; } 2>/dev/null
+exit $?

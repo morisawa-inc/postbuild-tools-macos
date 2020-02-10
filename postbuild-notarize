@@ -1,0 +1,238 @@
+#!/bin/bash
+
+#
+# notarize.sh
+# A bash script to notarize the product of Xcode projects.
+#
+
+print_help () {
+    echo "usage: $(basename "$0") [--store-password] [--list-providers] [--help] [package-path]" >&2
+    echo ""                                                  >&2
+    echo "options:"                                          >&2
+    echo ""                                                  >&2
+    echo "  --username <name>    user name"                  >&2
+    echo "  --provider <name>    short provider name"        >&2
+    echo ""                                                  >&2
+    echo "  --store-password     store password in keychain" >&2
+    echo "  --list-providers     list available teams"       >&2
+    echo "  -h, --help           show this help"             >&2
+    echo ""                                                  >&2
+}
+
+ARGS=()
+while [[ $# -gt 0 ]]
+do
+KEY="$1"
+
+case $KEY in
+    -s|--store-password)
+    STORE_PASSWORD=true
+    shift
+    ;;
+    -l|--list-providers)
+    LIST_PROVIDERS=true
+    shift
+    ;;
+    -u|--username)
+    AC_USERNAME="$2"
+    shift
+    shift
+    ;;
+    -p|--provider)
+    AC_PROVIDER="$2"
+    shift
+    shift
+    ;;
+    -h|--help)
+    PRINT_HELP=true
+    shift
+    ;;
+    *)
+    ARGS+=("$1")
+    shift
+    ;;
+esac
+done
+set -- "${ARGS[@]}"
+
+if [ "${PRINT_HELP}" ]; then
+    print_help
+    exit 0
+fi
+
+ALTOOL_USERNAME="${AC_USERNAME}"
+ALTOOL_PASSWORD="${AC_PASSWORD}"
+ALTOOL_PROVIDER="${AC_PROVIDER}"
+if [ -z "${AC_PASSWORD}" ]; then
+    ALTOOL_PASSWORD="@keychain:AC_PASSWORD"
+fi
+
+
+perform_list_providers_action () {
+    xcrun altool --list-providers --username "${ALTOOL_USERNAME}" --password "${ALTOOL_PASSWORD}"
+    EXIT_CODE=$?
+    if [ ${EXIT_CODE} -ne 0 ]; then
+        echo "error: An error occurred while listing providers." >&2
+    else
+        echo "tips: Make sure to pass <ProviderShortname> to \$AC_PROVIDER if you have multiple teams." >&2
+    fi
+    exit ${EXIT_CODE}
+}
+
+perform_store_password_action () {
+    if [ -z "${AC_PASSWORD}" ]; then
+        echo -n 'Password: '
+        read -s AC_PASSWORD
+        echo
+        if [ -z "${AC_PASSWORD}" ]; then
+            echo "error: Password cannot be empty." >&2
+            exit 1
+        fi
+    fi
+    xcrun altool --store-password-in-keychain-item "AC_PASSWORD" -u "${ALTOOL_USERNAME}" -p "${AC_PASSWORD}"
+    exit $?
+}
+
+ask_username_if_needed () {
+    if [ -z "${AC_USERNAME}" ]; then
+        echo -n 'Username: ' >&2
+        read AC_USERNAME
+        ALTOOL_USERNAME="${AC_USERNAME}"
+    fi
+}
+
+BUNDLE_PATH=""
+BUNDLE_ID=""
+if [ $# -eq 1 ]; then
+    if [ "${LIST_PROVIDERS}" -o "${STORE_PASSWORD}" ]; then
+        print_help
+        exit 1
+    fi
+    if [ -e "$1" ]; then
+        BUNDLE_PATH="$1"
+        BUNDLE_ID="${AC_BUNDLE_ID}"
+        if [ -z "${AC_BUNDLE_ID}" ]; then
+            BUNDLE_ID=$(mdls -name kMDItemCFBundleIdentifier -r "$1")
+            if [ -z "${BUNDLE_ID}" ]; then
+                echo "error: Failed to obtain bundle identifier. Explicitly set \$AC_BUNDLE_ID if you are notarizing a standalone executable." >&2
+                exit 1
+            fi
+        fi
+    else
+        echo "error: File not exist at the specified path." >&2
+        exit 1
+    fi
+else
+    if [ "${LIST_PROVIDERS}" ]; then
+        ask_username_if_needed
+        if [ -z "${ALTOOL_USERNAME}" ]; then
+            echo "error: Username cannot be empty." >&2
+            exit 1
+        fi
+        perform_list_providers_action && exit $?
+    fi
+    if [ "${STORE_PASSWORD}" ]; then
+        ask_username_if_needed
+        if [ -z "${ALTOOL_USERNAME}" ]; then
+            echo "error: Username cannot be empty." >&2
+            exit 1
+        fi
+        perform_store_password_action && exit $?
+    fi
+    if ! xcodebuild -list >/dev/null 2>&1; then
+        EXIT_CODE=$?
+        echo "error: Failed to run xcodebuild. Make sure that an Xcode project exists in the current directory." >&2
+        exit ${EXIT_CODE}
+    fi
+    BUNDLE_PATH=$((xcodebuild -showBuildSettings 2> /dev/null | grep -e '^\s*CONFIGURATION =' -e '^\s*FULL_PRODUCT_NAME =' | perl -pe 's/^\s*(.*?)\s*=\s*(.*)/$1="$2"/g' && echo 'echo "build/${CONFIGURATION}/${FULL_PRODUCT_NAME}"') | sh)
+    BUNDLE_ID=$((xcodebuild -showBuildSettings 2> /dev/null | grep -e '^\s*PRODUCT_BUNDLE_IDENTIFIER =' | perl -pe 's/^\s*(.*?)\s*=\s*(.*)/$1="$2"/g' && echo 'echo "${PRODUCT_BUNDLE_IDENTIFIER}"') | sh)
+    if [ -z "${BUNDLE_ID}" ]; then
+        echo "error: Failed to obtain bundle identifier. Explicitly set \$AC_BUNDLE_ID if you are notarizing a standalone executable." >&2
+        exit 1
+    fi
+fi 
+
+ask_username_if_needed
+if [ -z "${ALTOOL_USERNAME}" ]; then
+    echo "error: Username cannot be empty." >&2
+    exit 1
+fi
+
+BUNDLE_NAME=$(basename "${BUNDLE_PATH}")
+
+echo "  Product Path: ${BUNDLE_PATH}" >&2
+echo "  Bundle Identifier: ${BUNDLE_ID}" >&2
+
+ALTOOL_TEMP_DIR=$(mktemp -d)
+ALTOOL_ZIP_PAYLOAD="${ALTOOL_TEMP_DIR}/payload.zip"
+ALTOOL_NOTARIZE_APP_LOG="${ALTOOL_TEMP_DIR}/app.log"
+ALTOOL_NOTARIZE_INFO_LOG="${ALTOOL_TEMP_DIR}/info.log"
+
+echo "Preparing payload..." >&2
+ditto -c -k --keepParent --rsrc "${BUNDLE_PATH}" "${ALTOOL_ZIP_PAYLOAD}"
+
+echo "Uploading payload to Notary Service..." >&2
+if [ -z "${ALTOOL_PROVIDER}" ]; then
+    xcrun altool --notarize-app --primary-bundle-id "${BUNDLE_ID}" --username "${ALTOOL_USERNAME}" --password "${ALTOOL_PASSWORD}" --file "${ALTOOL_ZIP_PAYLOAD}" > "${ALTOOL_NOTARIZE_APP_LOG}" 2>&1
+else
+    xcrun altool --notarize-app --primary-bundle-id "${BUNDLE_ID}" --username "${ALTOOL_USERNAME}" --password "${ALTOOL_PASSWORD}" --asc-provider "${ALTOOL_PROVIDER}" --file "${ALTOOL_ZIP_PAYLOAD}" > "${ALTOOL_NOTARIZE_APP_LOG}" 2>&1 
+fi
+
+EXIT_CODE=$?
+if [ ${EXIT_CODE} -ne 0 ]; then
+    echo "error: An error occurred while uploading payload." >&2
+    cat "${ALTOOL_NOTARIZE_APP_LOG}" | sed 's/^/> /g' | tail -n 1 >&2
+    rm -r "${ALTOOL_TEMP_DIR}"
+	exit ${EXIT_CODE}
+fi
+
+ALTOOL_REQUEST_UUID=$(cat "${ALTOOL_NOTARIZE_APP_LOG}" | grep -m 1 -E '^RequestUUID' | perl -pe 's/^.*?=\s*(.*?)\s*$/$1/g')
+if [ -z "${ALTOOL_REQUEST_UUID}" ]; then
+    echo "error: Failed to retrieve Request UUID." >&2
+    cat "${ALTOOL_NOTARIZE_APP_LOG}" | sed 's/^/> /g' | tail -n 1 >&2
+    rm -r "${ALTOOL_TEMP_DIR}"
+    exit 1
+fi
+
+echo "  Request Identifier: ${ALTOOL_REQUEST_UUID}" >&2
+echo -n "Waiting for notarization to complete..." >&2
+
+while sleep 30 && printf '.' >&2; do
+    if [ -z "${ALTOOL_PROVIDER}" ]; then
+        xcrun altool --notarization-info "${ALTOOL_REQUEST_UUID}" --username "${ALTOOL_USERNAME}" --password "${ALTOOL_PASSWORD}" > "${ALTOOL_NOTARIZE_INFO_LOG}" 2>&1
+    else
+        xcrun altool --notarization-info "${ALTOOL_REQUEST_UUID}" --username "${ALTOOL_USERNAME}" --password "${ALTOOL_PASSWORD}" --asc-provider "${ALTOOL_PROVIDER}" > "${ALTOOL_NOTARIZE_INFO_LOG}" 2>&1
+    fi
+    EXIT_CODE=$?
+    if [ ${EXIT_CODE} -ne 0 ]; then
+        echo
+        cat "${ALTOOL_NOTARIZE_INFO_LOG}" | sed 's/^/> /g' >&2
+        rm -r "${ALTOOL_TEMP_DIR}"
+        exit ${EXIT_CODE}
+    fi
+    if ! grep -q "Status: in progress" "${ALTOOL_NOTARIZE_INFO_LOG}"; then
+        echo
+        ALTOOL_LOG_FILE_URL=$(cat "${ALTOOL_NOTARIZE_INFO_LOG}" | grep -m 1 -E 'LogFileURL' | perl -pe 's/^.*?:\s*(.*?)\s*$/$1/g')
+        echo "Fetching log file from server..." >&2
+        curl -s "${ALTOOL_LOG_FILE_URL}" | sed 's/^/> / g' >&2
+        if grep -q 'Status: success' "${ALTOOL_NOTARIZE_INFO_LOG}"; then 
+            echo "Stapling product..." >&2
+            xcrun stapler staple "${BUNDLE_PATH}"
+            echo "Done." >&2
+            if pgrep -qx Finder; then
+                osascript -e "display notification \"${BUNDLE_NAME} is notarized now.\" with title \"Notarization Completed\""
+            fi
+            rm -r "${ALTOOL_TEMP_DIR}"
+            exit 0
+        else
+            echo "error: An error occurred during notarization." >&2
+            cat "${ALTOOL_NOTARIZE_INFO_LOG}" | sed 's/^/> /g' >&2
+            if pgrep -qx Finder; then
+                osascript -e "display notification \"${BUNDLE_NAME} was not notarized.\" with title \"Notarization Failed\""
+            fi
+            rm -r "${ALTOOL_TEMP_DIR}"
+            exit 1
+        fi
+        break
+    fi
+done
