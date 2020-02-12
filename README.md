@@ -1,4 +1,4 @@
-# postbuild-tools
+# postbuild-tools-macos
 
 A set of automated codesign/notarization tools for distributing executables to the newer versions of macOS.
 
