@@ -2,6 +2,18 @@
 
 A set of automated codesign/notarization tools for distributing executables to the newer versions of macOS.
 
+## Summary
+
+These are the tools that makes the notarize process rather simple when `xcodebuild` is used in your project:
+
+```sh
+$ xcodebuild
+$ postbuild-codesign
+$ postbuild-notarize
+```
+
+As code signing and notarizaton are done according to the information in `.xcodeproj`, no options are needed to get the whole process done, unlike the other similar notarization-related scripts.
+
 ## postbuild-codesign
 
 Automates codesign and make the binary ready for notarization.
