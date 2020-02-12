@@ -11,7 +11,7 @@ $ postbuild-codesign --help
 ```
 
 ```sh
-usage: postbuild-codesign [--list] [--info] [--help] [--sign <identity>] [--no-deep] [--runtime] [package-path]
+usage: postbuild-codesign [--list] [--info] [--help] [--sign <identity>] [--no-deep] [--no-runtime] [package-path]
 
 options:
 
