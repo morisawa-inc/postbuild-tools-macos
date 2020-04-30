@@ -142,6 +142,7 @@ fi
 if [ ! "${NO_HARDENED_RUNTIME}" ]; then
     CODESIGN_OPTIONS+=("--option=runtime")
 fi
+CODESIGN_OPTIONS+=("--preserve-metadata=identifier,entitlements,requirements,runtime")
 
 # '--deep' option doesn't seem to work for app bundles inside 'Resources' folder.
 if [ ! "${NO_DEEP}" ]; then
