@@ -32,6 +32,22 @@ find_child_packages () {
     find_child_packages_unsorted "$1" | sort -r
 }
 
+find_child_macho_binaries_unsorted () {
+    find "$1" -type f | while read FILENAME
+    do
+        CAFEBABE=$(xxd -l 4 -p "${FILENAME}")
+        if [[ "${CAFEBABE}" =~ ^cefaedfe|cffaedfe|feedface|feedfacf|cafebabe$ ]]; then
+            if ! codesign -v -v "${FILENAME}" >/dev/null 2>&1; then
+                echo "${FILENAME}"
+            fi
+        fi
+    done
+}
+
+find_child_macho_binaries () {
+    find_child_macho_binaries_unsorted "$1" | sort -r
+}
+
 ARGS=()
 while [[ $# -gt 0 ]]
 do
@@ -128,12 +144,22 @@ if [ ! "${NO_HARDENED_RUNTIME}" ]; then
 fi
 
 # '--deep' option doesn't seem to work for app bundles inside 'Resources' folder.
-find_child_packages "${BUNDLE_PATH}" | while read CHILD_PACKAGE_PATH
-do
-    set -x
-    codesign "${CODESIGN_OPTIONS[@]}" "${CHILD_PACKAGE_PATH}"
-    { set +x; } 2>/dev/null
-done
+if [ ! "${NO_DEEP}" ]; then
+    # sign packages.
+    find_child_packages "${BUNDLE_PATH}" | while read CHILD_PACKAGE_PATH
+    do
+        set -x
+        codesign "${CODESIGN_OPTIONS[@]}" "${CHILD_PACKAGE_PATH}"
+        { set +x; } 2>/dev/null
+    done
+    # sign other mach-o binaries.
+    find_child_macho_binaries "${BUNDLE_PATH}" | while read CHILD_MACHO_BINARY_PATH
+    do
+        set -x
+        codesign "${CODESIGN_OPTIONS[@]}" "${CHILD_MACHO_BINARY_PATH}"
+        { set +x; } 2>/dev/null
+    done
+fi
 
 set -x
 codesign "${CODESIGN_OPTIONS[@]}" "${BUNDLE_PATH}"
