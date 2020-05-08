@@ -111,7 +111,7 @@ if [ $# -eq 1 ]; then
     if [ -e "$1" ]; then
         BUNDLE_PATH="$1"
         BUNDLE_ID="${AC_BUNDLE_ID}"
-        if [ -z "${AC_BUNDLE_ID}" ]; then
+        if [ -z "${BUNDLE_ID}" ]; then
             BUNDLE_ID=$(mdls -name kMDItemCFBundleIdentifier -r "$1")
             if [ -z "${BUNDLE_ID}" ]; then
                 echo "error: Failed to obtain bundle identifier. Explicitly set \$AC_BUNDLE_ID if you are notarizing a standalone executable." >&2
@@ -145,7 +145,10 @@ else
         exit ${EXIT_CODE}
     fi
     BUNDLE_PATH=$((xcodebuild -showBuildSettings 2> /dev/null | grep -e '^\s*CONFIGURATION =' -e '^\s*FULL_PRODUCT_NAME =' | perl -pe 's/^\s*(.*?)\s*=\s*(.*)/$1="$2"/g' && echo 'echo "build/${CONFIGURATION}/${FULL_PRODUCT_NAME}"') | sh)
-    BUNDLE_ID=$((xcodebuild -showBuildSettings 2> /dev/null | grep -e '^\s*PRODUCT_BUNDLE_IDENTIFIER =' | perl -pe 's/^\s*(.*?)\s*=\s*(.*)/$1="$2"/g' && echo 'echo "${PRODUCT_BUNDLE_IDENTIFIER}"') | sh)
+    BUNDLE_ID="${AC_BUNDLE_ID}"
+    if [ -z "${BUNDLE_ID}" ]; then
+        BUNDLE_ID=$((xcodebuild -showBuildSettings 2> /dev/null | grep -e '^\s*PRODUCT_BUNDLE_IDENTIFIER =' | perl -pe 's/^\s*(.*?)\s*=\s*(.*)/$1="$2"/g' && echo 'echo "${PRODUCT_BUNDLE_IDENTIFIER}"') | sh)
+    fi
     if [ -z "${BUNDLE_ID}" ]; then
         echo "error: Failed to obtain bundle identifier. Explicitly set \$AC_BUNDLE_ID if you are notarizing a standalone executable." >&2
         exit 1
