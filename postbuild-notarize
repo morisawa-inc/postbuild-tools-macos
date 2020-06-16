@@ -101,6 +101,10 @@ ask_username_if_needed () {
     fi
 }
 
+realpath() {
+    [[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
+}
+
 BUNDLE_PATH=""
 BUNDLE_ID=""
 if [ $# -eq 1 ]; then
@@ -113,7 +117,11 @@ if [ $# -eq 1 ]; then
         BUNDLE_ID="${AC_BUNDLE_ID}"
         if [ -z "${BUNDLE_ID}" ]; then
             BUNDLE_ID=$(mdls -name kMDItemCFBundleIdentifier -r "$1")
-            if [ -z "${BUNDLE_ID}" ]; then
+            if [ $? -ne 0 ] || [ -z "${BUNDLE_ID}" ]; then
+                INFO_PLIST=$(realpath "$1/Contents/Info.plist")
+                BUNDLE_ID=$(defaults read "${INFO_PLIST}" CFBundleIdentifier)
+            fi
+            if [ $? -ne 0 ] || [ -z "${BUNDLE_ID}" ]; then
                 echo "error: Failed to obtain bundle identifier. Explicitly set \$AC_BUNDLE_ID if you are notarizing a standalone executable." >&2
                 exit 1
             fi
