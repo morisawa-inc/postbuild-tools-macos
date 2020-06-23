@@ -130,6 +130,11 @@ if [ -z "${SIGNING_IDENTITY}" ]; then
 
 fi
 
+REMOVE_XATTR=true
+if [ "${REMOVE_XATTR}" ]; then
+	xattr -rc "${BUNDLE_PATH}"
+fi
+
 CODESIGN_OPTIONS=()
 CODESIGN_OPTIONS+=('--sign')
 CODESIGN_OPTIONS+=("${SIGNING_IDENTITY}")
