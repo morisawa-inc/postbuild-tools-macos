@@ -216,10 +216,12 @@ while sleep 30 && printf '.' >&2; do
     fi
     EXIT_CODE=$?
     if [ ${EXIT_CODE} -ne 0 ]; then
-        echo
-        cat "${ALTOOL_NOTARIZE_INFO_LOG}" | sed 's/^/> /g' >&2
-        rm -r "${ALTOOL_TEMP_DIR}"
-        exit ${EXIT_CODE}
+        if ! grep -q "Error: Failed to get notarization info." "${ALTOOL_NOTARIZE_INFO_LOG}"; then
+            echo
+            cat "${ALTOOL_NOTARIZE_INFO_LOG}" | sed 's/^/> /g' >&2
+            rm -r "${ALTOOL_TEMP_DIR}"
+            exit ${EXIT_CODE}
+        fi
     fi
     if ! grep -q "Status: in progress" "${ALTOOL_NOTARIZE_INFO_LOG}"; then
         echo
