@@ -132,7 +132,7 @@ fi
 
 REMOVE_XATTR=true
 if [ "${REMOVE_XATTR}" ]; then
-	xattr -rc "${BUNDLE_PATH}"
+	/usr/bin/xattr -rc "${BUNDLE_PATH}"
 fi
 
 CODESIGN_OPTIONS=()
