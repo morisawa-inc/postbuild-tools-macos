@@ -6,17 +6,18 @@
 #
 
 print_help () {
-    echo "usage: $(basename "$0") [--list] [--info] [--help] [--sign <identity>] [--no-deep] [--no-runtime] [package-path]" >&2
-    echo ""                                                                >&2
-    echo "options:"                                                        >&2
-    echo ""                                                                >&2
-    echo "  --list                 list available identities"              >&2
-    echo "  --info, --info-full    display codesign info for given binary" >&2
-    echo ""                                                                >&2
-    echo "  --sign <identity>      identity for codesigning"               >&2
-    echo "  --no-deep              don't codesign recursively"             >&2
-    echo "  --no-runtime           disable hardened runtime opt-in"        >&2
-    echo ""                                                                >&2
+    echo "usage: $(basename "$0") [--list] [--info] [--help] [--sign <identity>] [--no-deep] [--no-runtime] [--no-preserve-metadata] [package-path]" >&2
+    echo ""                                                                   >&2
+    echo "options:"                                                           >&2
+    echo ""                                                                   >&2
+    echo "  --list                    list available identities"              >&2
+    echo "  --info, --info-full       display codesign info for given binary" >&2
+    echo ""                                                                   >&2
+    echo "  --sign <identity>         identity for codesigning"               >&2
+    echo "  --no-deep                 don't codesign recursively"             >&2
+    echo "  --no-runtime              disable hardened runtime opt-in"        >&2
+    echo "  --no-preserve-metadata    don't preserve metadata"                >&2
+    echo ""                                                                   >&2
 }
 
 find_child_packages_unsorted () {
@@ -65,6 +66,10 @@ case $KEY in
     ;;
     --no-runtime)
     NO_HARDENED_RUNTIME=true
+    shift
+    ;;
+    --no-preserve-metadata)
+    NO_PRESERVE_METADATA=true
     shift
     ;;
     -l|--list)
@@ -148,7 +153,9 @@ fi
 if [ ! "${NO_HARDENED_RUNTIME}" ]; then
     CODESIGN_OPTIONS+=("--option=runtime")
 fi
-CODESIGN_OPTIONS+=("--preserve-metadata=identifier,entitlements,requirements,runtime")
+if [ ! "${NO_PRESERVE_METADATA}" ]; then
+    CODESIGN_OPTIONS+=("--preserve-metadata=identifier,entitlements,requirements,runtime")
+fi
 
 # '--deep' option doesn't seem to work for app bundles inside 'Resources' folder.
 if [ ! "${NO_DEEP}" ]; then
