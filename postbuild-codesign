@@ -22,7 +22,7 @@ print_help () {
 find_child_packages_unsorted () {
     find "$1" -mindepth 1 -type d | while read FILENAME
     do
-        if mdls -name kMDItemContentTypeTree "${FILENAME}" | grep -q "com.apple.package"; then
+        if mdls -name kMDItemContentTypeTree "${FILENAME}" | grep -q -e "com.apple.package" -e "com.apple.framework"; then
             echo "${FILENAME}"
         fi
     done
