@@ -151,18 +151,18 @@ CODESIGN_OPTIONS+=("--preserve-metadata=identifier,entitlements,requirements,run
 
 # '--deep' option doesn't seem to work for app bundles inside 'Resources' folder.
 if [ ! "${NO_DEEP}" ]; then
-    # sign packages.
-    find_child_packages "${BUNDLE_PATH}" | while read CHILD_PACKAGE_PATH
-    do
-        set -x
-        codesign "${CODESIGN_OPTIONS[@]}" "${CHILD_PACKAGE_PATH}"
-        { set +x; } 2>/dev/null
-    done
     # sign other mach-o binaries.
     find_child_macho_binaries "${BUNDLE_PATH}" | while read CHILD_MACHO_BINARY_PATH
     do
         set -x
         codesign "${CODESIGN_OPTIONS[@]}" "${CHILD_MACHO_BINARY_PATH}"
+        { set +x; } 2>/dev/null
+    done
+    # sign packages.
+    find_child_packages "${BUNDLE_PATH}" | while read CHILD_PACKAGE_PATH
+    do
+        set -x
+        codesign "${CODESIGN_OPTIONS[@]}" "${CHILD_PACKAGE_PATH}"
         { set +x; } 2>/dev/null
     done
 fi
