@@ -141,6 +141,7 @@ CODESIGN_OPTIONS+=("${SIGNING_IDENTITY}")
 CODESIGN_OPTIONS+=("-vvvv")
 CODESIGN_OPTIONS+=("--force")
 CODESIGN_OPTIONS+=("--strict")
+CODESIGN_OPTIONS+=("--timestamp")
 if [ ! "${NO_DEEP}" ]; then
     CODESIGN_OPTIONS+=("--deep")
 fi
