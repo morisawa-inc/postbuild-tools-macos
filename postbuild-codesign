@@ -63,7 +63,7 @@ case $KEY in
     NO_DEEP=true
     shift
     ;;
-    --runtime)
+    --no-runtime)
     NO_HARDENED_RUNTIME=true
     shift
     ;;
