@@ -67,9 +67,15 @@ if [ -z "${AC_PASSWORD}" ]; then
     ALTOOL_PASSWORD="@keychain:AC_PASSWORD"
 fi
 
+ALTOOL_API_KEY="${AC_API_KEY}"
+ALTOOL_API_ISSUER="${AC_API_ISSUER}"
 
 perform_list_providers_action () {
-    xcrun altool --list-providers --username "${ALTOOL_USERNAME}" --password "${ALTOOL_PASSWORD}"
+    if [ -n "${ALTOOL_API_KEY}" -a -n "${ALTOOL_API_ISSUER}" ]; then
+        xcrun altool --list-providers --apiKey "${ALTOOL_API_KEY}" --apiIssuer "${ALTOOL_API_ISSUER}"
+    else
+        xcrun altool --list-providers --username "${ALTOOL_USERNAME}" --password "${ALTOOL_PASSWORD}"
+    fi
     EXIT_CODE=$?
     if [ ${EXIT_CODE} -ne 0 ]; then
         echo "error: An error occurred while listing providers." >&2
@@ -182,11 +188,65 @@ ALTOOL_NOTARIZE_INFO_LOG="${ALTOOL_TEMP_DIR}/info.log"
 echo "Preparing payload..." >&2
 ditto -c -k --keepParent --rsrc "${BUNDLE_PATH}" "${ALTOOL_ZIP_PAYLOAD}"
 
+NOTARYTOOL_BIN=""
+if xcrun notarytool >/dev/null 2>&1; then
+    NOTARYTOOL_BIN="xcrun" "notarytool"
+fi
+if notarytool >/dev/null 2>&1; then
+    NOTARYTOOL_BIN="notarytool"
+fi
+
+if [ -n "$NOTARYTOOL_BIN" ]; then
+    if [ -n "${ALTOOL_API_KEY}" -a -n "${ALTOOL_API_ISSUER}" ]; then
+        echo "Uploading payload to Notary Service and waiting for notarization to complete..." >&2
+        NOTARYTOOL_RESULT=$($NOTARYTOOL_BIN submit --key "$HOME/.private_keys/AuthKey_$ALTOOL_API_KEY.p8" --key-id "$ALTOOL_API_KEY" --issuer "$ALTOOL_API_ISSUER" --wait "${ALTOOL_ZIP_PAYLOAD}" | tee /dev/tty)
+        NOTARYTOOL_SUBMISSION_ID=$(echo "$NOTARYTOOL_RESULT" | grep -A1 'Submission ID received' | tail -1 | tr -d ' ' | cut -d':' -f 2)
+        if [ -n "$NOTARYTOOL_SUBMISSION_ID" ]; then
+            $NOTARYTOOL_BIN info --key "$HOME/.private_keys/AuthKey_$ALTOOL_API_KEY.p8" --key-id "$ALTOOL_API_KEY" --issuer "$ALTOOL_API_ISSUER" "$NOTARYTOOL_SUBMISSION_ID" | sed 's/^/> /g'
+        fi
+        if echo "$NOTARYTOOL_RESULT" | grep -q 'status: Accepted'; then
+            echo "Stapling product..." >&2
+            xcrun stapler staple "${BUNDLE_PATH}"
+            echo "Done." >&2
+            if pgrep -qx Finder; then
+                osascript -e "display notification \"${BUNDLE_NAME} is notarized now.\" with title \"Notarization Completed\""
+            fi
+            rm -r "${ALTOOL_TEMP_DIR}"
+            exit 0
+        else
+            echo "error: An error occurred during notarization." >&2
+            cat "${ALTOOL_NOTARIZE_INFO_LOG}" | sed 's/^/> /g' >&2
+            if pgrep -qx Finder; then
+                osascript -e "display notification \"${BUNDLE_NAME} was not notarized.\" with title \"Notarization Failed\""
+            fi
+            rm -r "${ALTOOL_TEMP_DIR}"
+            exit 1
+        fi
+    else
+        echo "error: Authentication other than api key via notarytool currently not supported." >&2
+        rm -r "${ALTOOL_TEMP_DIR}"
+        exit 1
+    fi
+    exit 0
+fi
+
 echo "Uploading payload to Notary Service..." >&2
 if [ -z "${ALTOOL_PROVIDER}" ]; then
-    xcrun altool --notarize-app --primary-bundle-id "${BUNDLE_ID}" --username "${ALTOOL_USERNAME}" --password "${ALTOOL_PASSWORD}" --file "${ALTOOL_ZIP_PAYLOAD}" > "${ALTOOL_NOTARIZE_APP_LOG}" 2>&1
+    if [ -n "${ALTOOL_API_KEY}" -a -n "${ALTOOL_API_ISSUER}" ]; then
+    
+        else
+            xcrun altool --notarize-app --primary-bundle-id "${BUNDLE_ID}" --apiKey "${ALTOOL_API_KEY}" --apiIssuer "${ALTOOL_API_ISSUER}" --file "${ALTOOL_ZIP_PAYLOAD}" --verbose > "${ALTOOL_NOTARIZE_APP_LOG}" 2>&1
+        fi
+    else
+        xcrun altool --notarize-app --primary-bundle-id "${BUNDLE_ID}" --username "${ALTOOL_USERNAME}" --password "${ALTOOL_PASSWORD}" --file "${ALTOOL_ZIP_PAYLOAD}" > "${ALTOOL_NOTARIZE_APP_LOG}" 2>&1
+    fi
+
 else
-    xcrun altool --notarize-app --primary-bundle-id "${BUNDLE_ID}" --username "${ALTOOL_USERNAME}" --password "${ALTOOL_PASSWORD}" --asc-provider "${ALTOOL_PROVIDER}" --file "${ALTOOL_ZIP_PAYLOAD}" > "${ALTOOL_NOTARIZE_APP_LOG}" 2>&1 
+    if [ -n "${ALTOOL_API_KEY}" -a -n "${ALTOOL_API_ISSUER}" ]; then
+        xcrun altool --notarize-app --primary-bundle-id "${BUNDLE_ID}" --apiKey "${ALTOOL_API_KEY}" --apiIssuer "${ALTOOL_API_ISSUER}" --asc-provider "${ALTOOL_PROVIDER}" --file "${ALTOOL_ZIP_PAYLOAD}" > "${ALTOOL_NOTARIZE_APP_LOG}" 2>&1 
+    else
+        xcrun altool --notarize-app --primary-bundle-id "${BUNDLE_ID}" --username "${ALTOOL_USERNAME}" --password "${ALTOOL_PASSWORD}" --asc-provider "${ALTOOL_PROVIDER}" --file "${ALTOOL_ZIP_PAYLOAD}" > "${ALTOOL_NOTARIZE_APP_LOG}" 2>&1 
+    fi
 fi
 
 EXIT_CODE=$?
@@ -210,9 +270,17 @@ echo -n "Waiting for notarization to complete..." >&2
 
 while sleep 30 && printf '.' >&2; do
     if [ -z "${ALTOOL_PROVIDER}" ]; then
-        xcrun altool --notarization-info "${ALTOOL_REQUEST_UUID}" --username "${ALTOOL_USERNAME}" --password "${ALTOOL_PASSWORD}" > "${ALTOOL_NOTARIZE_INFO_LOG}" 2>&1
+        if [ -n "${ALTOOL_API_KEY}" -a -n "${ALTOOL_API_ISSUER}" ]; then
+            xcrun altool --notarization-info "${ALTOOL_REQUEST_UUID}" --apiKey "${ALTOOL_API_KEY}" --apiIssuer "${ALTOOL_API_ISSUER}" > "${ALTOOL_NOTARIZE_INFO_LOG}" 2>&1
+        else
+            xcrun altool --notarization-info "${ALTOOL_REQUEST_UUID}" --username "${ALTOOL_USERNAME}" --password "${ALTOOL_PASSWORD}" > "${ALTOOL_NOTARIZE_INFO_LOG}" 2>&1
+        fi
     else
-        xcrun altool --notarization-info "${ALTOOL_REQUEST_UUID}" --username "${ALTOOL_USERNAME}" --password "${ALTOOL_PASSWORD}" --asc-provider "${ALTOOL_PROVIDER}" > "${ALTOOL_NOTARIZE_INFO_LOG}" 2>&1
+        if [ -n "${ALTOOL_API_KEY}" -a -n "${ALTOOL_API_ISSUER}" ]; then
+            xcrun altool --notarization-info "${ALTOOL_REQUEST_UUID}" --apiKey "${ALTOOL_API_KEY}" --apiIssuer "${ALTOOL_API_ISSUER}" --asc-provider "${ALTOOL_PROVIDER}" > "${ALTOOL_NOTARIZE_INFO_LOG}" 2>&1
+        else
+            xcrun altool --notarization-info "${ALTOOL_REQUEST_UUID}" --username "${ALTOOL_USERNAME}" --password "${ALTOOL_PASSWORD}" > "${ALTOOL_NOTARIZE_INFO_LOG}" 2>&1
+        fi
     fi
     EXIT_CODE=$?
     if [ ${EXIT_CODE} -ne 0 ]; then
