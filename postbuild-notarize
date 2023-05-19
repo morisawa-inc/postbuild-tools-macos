@@ -201,7 +201,7 @@ ditto -c -k --keepParent --rsrc "${BUNDLE_PATH}" "${ALTOOL_ZIP_PAYLOAD}"
 if [ -n "$NOTARYTOOL_BIN" ]; then
     if [ -n "${ALTOOL_API_KEY}" -a -n "${ALTOOL_API_ISSUER}" ]; then
         echo "Uploading payload to Notary Service and waiting for notarization to complete..." >&2
-        NOTARYTOOL_RESULT=$($NOTARYTOOL_BIN submit --key "$HOME/.private_keys/AuthKey_$ALTOOL_API_KEY.p8" --key-id "$ALTOOL_API_KEY" --issuer "$ALTOOL_API_ISSUER" --wait "${ALTOOL_ZIP_PAYLOAD}" | tee /dev/tty)
+        NOTARYTOOL_RESULT=$($NOTARYTOOL_BIN submit --key "$HOME/.private_keys/AuthKey_$ALTOOL_API_KEY.p8" --key-id "$ALTOOL_API_KEY" --issuer "$ALTOOL_API_ISSUER" --wait "${ALTOOL_ZIP_PAYLOAD}" | tee /dev/stderr)
         NOTARYTOOL_SUBMISSION_ID=$(echo "$NOTARYTOOL_RESULT" | grep -A1 'Submission ID received' | tail -1 | tr -d ' ' | cut -d':' -f 2)
         if [ -n "$NOTARYTOOL_SUBMISSION_ID" ]; then
             $NOTARYTOOL_BIN info --key "$HOME/.private_keys/AuthKey_$ALTOOL_API_KEY.p8" --key-id "$ALTOOL_API_KEY" --issuer "$ALTOOL_API_ISSUER" "$NOTARYTOOL_SUBMISSION_ID" | sed 's/^/> /g'
