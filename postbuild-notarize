@@ -167,12 +167,22 @@ else
         echo "error: Failed to obtain bundle identifier. Explicitly set \$AC_BUNDLE_ID if you are notarizing a standalone executable." >&2
         exit 1
     fi
-fi 
+fi
 
-ask_username_if_needed
-if [ -z "${ALTOOL_USERNAME}" ]; then
-    echo "error: Username cannot be empty." >&2
-    exit 1
+NOTARYTOOL_BIN=""
+if xcrun notarytool >/dev/null 2>&1; then
+    NOTARYTOOL_BIN="xcrun" "notarytool"
+fi
+if notarytool >/dev/null 2>&1; then
+    NOTARYTOOL_BIN="notarytool"
+fi
+
+if ! [ -n "$NOTARYTOOL_BIN" -a -n "${ALTOOL_API_KEY}" -a -n "${ALTOOL_API_ISSUER}" ]; then
+  ask_username_if_needed
+  if [ -z "${ALTOOL_USERNAME}" ]; then
+      echo "error: Username cannot be empty." >&2
+      exit 1
+  fi
 fi
 
 BUNDLE_NAME=$(basename "${BUNDLE_PATH}")
@@ -187,14 +197,6 @@ ALTOOL_NOTARIZE_INFO_LOG="${ALTOOL_TEMP_DIR}/info.log"
 
 echo "Preparing payload..." >&2
 ditto -c -k --keepParent --rsrc "${BUNDLE_PATH}" "${ALTOOL_ZIP_PAYLOAD}"
-
-NOTARYTOOL_BIN=""
-if xcrun notarytool >/dev/null 2>&1; then
-    NOTARYTOOL_BIN="xcrun" "notarytool"
-fi
-if notarytool >/dev/null 2>&1; then
-    NOTARYTOOL_BIN="notarytool"
-fi
 
 if [ -n "$NOTARYTOOL_BIN" ]; then
     if [ -n "${ALTOOL_API_KEY}" -a -n "${ALTOOL_API_ISSUER}" ]; then
