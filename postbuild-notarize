@@ -171,7 +171,7 @@ fi
 
 NOTARYTOOL_BIN=""
 if xcrun notarytool >/dev/null 2>&1; then
-    NOTARYTOOL_BIN="xcrun" "notarytool"
+    NOTARYTOOL_BIN="xcrun notarytool"
 fi
 if notarytool >/dev/null 2>&1; then
     NOTARYTOOL_BIN="notarytool"
