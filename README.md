@@ -115,4 +115,4 @@ Tested on macOS 10.14.6. Make sure to install Command Line Tools for Xcode befor
 
 ## License
 
-TBD
+Apache License 2.0
