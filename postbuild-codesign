@@ -39,7 +39,13 @@ find_child_macho_binaries_unsorted () {
     do
         CAFEBABE=$(xxd -l 4 -p "${FILENAME}")
         if [[ "${CAFEBABE}" =~ ^cefaedfe|cffaedfe|feedface|feedfacf|cafebabe$ ]]; then
+            NEEDS_CODESIGN=0
             if ! codesign -v -v "${FILENAME}" >/dev/null 2>&1; then
+                NEEDS_CODESIGN=1
+            elif codesign -dvvv "${FILENAME}" 2>&1 | grep -q 'Signature=adhoc'; then
+                NEEDS_CODESIGN=1
+            fi
+            if [ "$NEEDS_CODESIGN" -ne 0 ]; then
                 echo "${FILENAME}"
             fi
         fi
